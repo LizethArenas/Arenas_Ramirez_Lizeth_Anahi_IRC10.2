@@ -1,0 +1,125 @@
+Dockerfile
+
+# Usa una imagen base adecuada para Python y ajusta según sea necesario
+FROM python:3.8-slim
+
+# Instala las dependencias necesarias para tu aplicación
+RUN pip install ansible flask
+
+# Establece el directorio de trabajo dentro del contenedor
+WORKDIR /app
+
+# Copia todos los archivos necesarios a la imagen del contenedor
+COPY . .
+
+# Define una variable de entorno para el puerto de Flask
+ENV FLASK_RUN_PORT=5000
+
+# Agrega un script de inicio para imprimir la URL de Flask
+ADD start.sh /start.sh
+RUN chmod +x /start.sh
+
+# Ejecuta Flask como el comando predeterminado cuando se inicie el contenedor
+CMD ["/start.sh"]
+_____________________________________________________________________
+app.py
+
+from flask import Flask, render_template, request
+import subprocess
+
+app = Flask(__name__)
+
+@app.route('/')
+def index():
+    return render_template('index.html')
+
+@app.route('/run', methods=['POST'])
+def run():
+    task = request.form.get('task')
+    if task == 'monitor':
+        playbook = 'monitor.yml'
+    elif task == 'maintenance':
+        playbook = 'maintenance.yml'
+    else:
+        return "Tarea no válida", 400
+
+    # Ejecutar el playbook de Ansible y capturar la salida
+    result = subprocess.run(['ansible-playbook', playbook], capture_output=True, text=True)
+
+    # Mostrar la salida en la plantilla HTML
+    return render_template('result.html', result=result.stdout)
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5002)
+_____________________________________________________________________________
+ maintenance.yml
+
+---
+- name: Mantenimiento del sistema
+  hosts: all
+  tasks:
+    - name: Limpiar archivos temporales
+      file:
+        path: /tmp
+        state: absent
+        recurse: yes
+_____________________________________________
+monitor.yml
+
+---
+- name: Monitoreo del sistema
+  hosts: all
+  tasks:
+    - name: Verificar el uso de disco
+      command: df -h
+      register: disk_usage
+
+    - name: Mostrar el uso de disco
+      debug:
+        var: disk_usage.stdout_lines
+____________________________________________
+start.sh
+
+#!/bin/bash
+export FLASK_APP=app.py
+export FLASK_ENV=development
+flask run --host=0.0.0.0 --port=5002
+____________________________________________
+**crear captera templates** dentro de esta crear archivos
+
+index.html
+
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Portal de Ansible</title>
+</head>
+<body>
+    <h1>Portal de Ansible</h1>
+    <form method="post" action="/run">
+        <button type="submit" name="task" value="monitor">Ejecutar Monitoreo</button>
+        <button type="submit" name="task" value="maintenance">Ejecutar Mantenimiento</button>
+    </form>
+</body>
+</html>
+_______________________________________________________________
+result.html
+
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Resultado de la Ejecución de Ansible</title>
+</head>
+<body>
+    <h1>Resultado de la Ejecución de Ansible</h1>
+    <pre>{{ result }}</pre>
+    <br>
+    <a href="/">Volver al Inicio</a>
+</body>
+</html>
+
+
+
+
+
+
